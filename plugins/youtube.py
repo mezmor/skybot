@@ -12,7 +12,6 @@ info_url = base_url + 'videos?part=snippet,contentDetails,statistics'
 search_api_url = base_url + 'search'
 video_url = 'http://youtube.com/watch?v=%s'
 
-
 def get_video_description(vid_id, api_key):
     j = http.get_json(info_url, id=vid_id, key=api_key)
 
@@ -27,10 +26,16 @@ def get_video_description(vid_id, api_key):
                               "%Y-%m-%dT%H:%M:%S.000Z")
     published = time.strftime("%Y.%m.%d", published)
 
-    views = group_int_digits(j['statistics']['viewCount'], ',')
-    likes = j['statistics'].get('likeCount', 0)
-    dislikes = j['statistics'].get('dislikeCount', 0)
-    
+
+    if 'statistics' in j:
+        views = group_int_digits(j['statistics']['viewCount'], ',')
+        likes = j['statistics'].get('likeCount', 0)
+        dislikes = j['statistics'].get('dislikeCount', 0)
+    else:
+        views = 'No data for'
+        likes = 'No data for '
+        dislikes = ''
+
     out = (u'\x02{snippet[title]}\x02 - length \x02{duration}\x02 - '
            u'{likes}\u2191{dislikes}\u2193 - '
            u'\x02{views}\x02 views - '
