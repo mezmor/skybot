@@ -1,5 +1,29 @@
 from util import hook, http
 
+"""
+def google(symbols, timeout=None):
+    symbols = list(symbols)
+    url = "http://finance.google.com/finance/info?client=ig&q=%s" % ",".join(urllib.quote(symbol) for symbol in symbols)
+    f = urllib2.urlopen(url)
+    try:
+        data = f.read()
+        data = data.split("\n")
+        if data[0] != "" or data[1] != "// [":
+            return "bad market data for %r: %r" % (url, data)
+
+        data = "[" + "\n".join(data[2:])
+        j = json.loads(data, encoding="iso-8859-1")
+        if len(j) != len(symbols):
+            return "some symbols are invalid"
+
+        result = {}
+        for symbol, data in zip(symbols, j):
+            last_trade_price = decimal(data["l_fix"])
+            result[symbol] = Stock(symbol, symbol, None, None, last_trade_price, json.dumps(data))
+        return result
+    finally:
+        f.close()
+"""
 
 @hook.command
 def stock(inp):
@@ -44,3 +68,4 @@ def stock(inp):
           "MCAP: %(MarketCapitalization)s" % quote
 
     return ret
+

@@ -8,3 +8,9 @@ pep8.py
 .pydevproject
 *.db
 web
+bin/
+lib/
+include/
+local/
+pip-selfcheck.json
+
