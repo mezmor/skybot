@@ -1,3 +1,5 @@
+from __future__ import division, unicode_literals
+from past.utils import old_div
 import math
 import time
 
@@ -29,7 +31,8 @@ def get_history(db, chan, url):
 
 
 def nicklist(nicks):
-    nicks = sorted(dict(nicks), key=unicode.lower)
+    nicks.sort(key=lambda n: n.lower())
+
     if len(nicks) <= 2:
         return ' and '.join(nicks)
     else:
@@ -46,7 +49,7 @@ def format_reply(history):
     if len(history) == 1:
         return "%s linked that %s ago." % (last_nick, last_time)
 
-    hour_span = math.ceil((time.time() - history[-1][1]) / 3600)
+    hour_span = math.ceil(old_div((time.time() - history[-1][1]), 3600))
     hour_span = '%.0f hours' % hour_span if hour_span > 1 else 'hour'
 
     hlen = len(history)
@@ -57,16 +60,20 @@ def format_reply(history):
     else:
         last = "last linked by %s %s ago" % (last_nick, last_time)
 
-    return "that url has been posted %s in the past %s by %s (%s)." % (ordinal,
-                                                                       hour_span, nicklist(history), last)
+    return "that url has been posted %s in the past %s by %s (%s)." % (
+        ordinal,
+        hour_span,
+        nicklist([h[0] for h in history]),
+        last
+    )
 
 
 @hook.regex(r'([a-zA-Z]+://|www\.)[^ ]+')
 def urlinput(match, nick='', chan='', db=None, bot=None):
     db_init(db)
-    url = urlnorm.normalize(match.group().encode('utf-8'))
+    url = urlnorm.normalize(match.group())
     if url not in ignored_urls:
-        url = url.decode('utf-8')
+        url = url
         history = get_history(db, chan, url)
         insert_history(db, chan, url, nick)
 

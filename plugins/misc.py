@@ -18,6 +18,8 @@ def get_version():
         revnumber = len(revs)
         shorthash = revs[0]
 
+    shorthash = shorthash.decode('utf-8')
+
     http.ua_skybot = 'Skybot/r%d %s (http://github.com/rmmh/skybot)' \
         % (revnumber, shorthash)
 
@@ -28,7 +30,7 @@ def get_version():
 @hook.event('KICK')
 def rejoin(paraml, conn=None):
     if paraml[1] == conn.nick:
-        if paraml[0].lower() in conn.conf.get("channels", []):
+        if paraml[0].lower() in conn.channels:
             conn.join(paraml[0])
 
 
@@ -41,15 +43,15 @@ def invite(paraml, conn=None):
 @hook.event('004')
 def onjoin(paraml, conn=None):
     # identify to services
-    nickserv_password = conn.conf.get('nickserv_password', '')
-    nickserv_name = conn.conf.get('nickserv_name', 'nickserv')
-    nickserv_command = conn.conf.get('nickserv_command', 'IDENTIFY %s')
+    nickserv_password = conn.nickserv_password
+    nickserv_name = conn.nickserv_name
+    nickserv_command = conn.nickserv_command
     if nickserv_password:
         conn.msg(nickserv_name, nickserv_command % nickserv_password)
         time.sleep(1)
 
     # set mode on self
-    mode = conn.conf.get('mode')
+    mode = conn.user_mode
     if mode:
         conn.cmd('MODE', [conn.nick, mode])
 

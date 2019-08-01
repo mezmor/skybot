@@ -1,3 +1,9 @@
+#!/usr/bin/env python3
+
+from __future__ import division, unicode_literals, print_function
+from past.utils import old_div
+import re
+
 from util import hook, http
 
 """
@@ -25,47 +31,68 @@ def google(symbols, timeout=None):
         f.close()
 """
 
+def human_price(x):
+    if x > 1e9:
+        return '{:,.2f}B'.format(old_div(x, 1e9))
+    elif x > 1e6:
+        return '{:,.2f}M'.format(old_div(x, 1e6))
+    return '{:,.0f}'.format(x)
+
+
+@hook.api_key('iexcloud')
 @hook.command
-def stock(inp):
-    '''.stock <symbol> -- gets stock information'''
+def stock(inp, api_key=None):
+    '''.stock <symbol> [info] -- retrieves a weeks worth of stats for given symbol. Optionally displays information about the company.'''
 
-    url = ('http://query.yahooapis.com/v1/public/yql?format=json&'
-           'env=store%3A%2F%2Fdatatables.org%2Falltableswithkeys')
+    if not api_key:
+        return 'missing api key'
 
-    parsed = http.get_json(url, q='select * from yahoo.finance.quotes '
-                           'where symbol in ("%s")' % inp)  # heh, SQLI
+    arguments = inp.split(' ')
 
-    quote = parsed['query']['results']['quote']
+    symbol = arguments[0].upper()
 
-    # if we dont get a company name back, the symbol doesn't match a company
-    if quote['Change'] is None:
-        return "unknown ticker symbol %s" % inp
+    try:
+        quote = http.get_json(
+            'https://cloud.iexapis.com/stable/stock/{symbol}/quote'.format(symbol=symbol),
+            token=api_key)
+    except http.HTTPError:
+        return '{} is not a valid stock symbol.'.format(symbol)
 
-    price = float(quote['LastTradePriceOnly'])
-    change = float(quote['Change'])
-    if quote['Open'] and quote['Bid'] and quote['Ask']:
-        open_price = float(quote['Open'])
-        bid = float(quote['Bid'])
-        ask = float(quote['Ask'])
-        if price < bid:
-            price = bid
-        elif price > ask:
-            price = ask
-        change = price - open_price
-        quote['LastTradePriceOnly'] = "%.2f" % price
-        quote['Change'] = ("+%.2f" % change) if change >= 0 else change
-
-    if change < 0:
-        quote['color'] = "5"
+    if quote['extendedPriceTime'] and ['latestUpdate'] < quote['extendedPriceTime']:
+        price = quote['extendedPrice']
+        change = quote['extendedChange']
+    elif quote['latestSource'] == 'Close' and quote.get('iexRealtimePrice'):
+        # NASDAQ stocks don't have extendedPrice anymore :(
+        price = quote['iexRealtimePrice']
+        change = price - quote['previousClose']
     else:
-        quote['color'] = "3"
+        price = quote['latestPrice']
+        change = quote['change']
 
-    quote['PercentChange'] = 100 * change / (price - change)
+    def maybe(name, key, fmt=human_price):
+        if quote.get(key):
+            return ' | {0}: {1}'.format(name, fmt(float(quote[key])))
+        return ''
 
-    ret = "%(Name)s - %(LastTradePriceOnly)s "                   \
-          "\x03%(color)s%(Change)s (%(PercentChange).2f%%)\x03 "        \
-          "Day Range: %(DaysRange)s " \
-          "MCAP: %(MarketCapitalization)s" % quote
+    response = {
+        'name': quote['companyName'],
+        'change': change,
+        'percent_change': 100 * change / (price - change),
+        'symbol': quote['symbol'],
+        'price': price,
+        'color': '05' if change < 0 else '03',
+        'high': quote['high'],
+        'low': quote['low'],
+        'average_volume': maybe('Volume', 'latestVolume'),
+        'market_cap': maybe('MCAP', 'marketCap'),
+        'pe_ratio': maybe('P/E', 'peRatio', fmt='{:.2f}'.format),
+    }
 
-    return ret
+    return ("{name} ({symbol}) ${price:,.2f} \x03{color}{change:,.2f} ({percent_change:,.2f}%)\x03"
+            + (" | Day Range: ${low:,.2f} - ${high:,.2f}"  if response['high'] and response['low'] else '') +
+            "{pe_ratio}{average_volume}{market_cap}").format(**response)
 
+if __name__ == '__main__':
+    import os, sys
+    for arg in sys.argv[1:]:
+        print(stock(arg, api_key=os.getenv('KEY')))

@@ -1,3 +1,6 @@
+from __future__ import unicode_literals
+
+from builtins import chr
 import re
 
 from util import hook, http
@@ -15,7 +18,7 @@ def wolframalpha(inp, api_key=None):
 
     pod_texts = []
     for pod in result.xpath("//pod"):
-        title = pod.attrib['title']
+        title = '' if pod.attrib['title'] == 'Result' else pod.attrib['title'] + ': ' 
         if pod.attrib['id'] == 'Input':
             continue
 
@@ -26,7 +29,7 @@ def wolframalpha(inp, api_key=None):
             if subpod:
                 results.append(subpod)
         if results:
-            pod_texts.append(title + ': ' + '|'.join(results))
+            pod_texts.append(title + '|'.join(results))
 
     ret = '. '.join(pod_texts)
 
@@ -36,7 +39,7 @@ def wolframalpha(inp, api_key=None):
     ret = re.sub(r'\\(.)', r'\1', ret)
 
     def unicode_sub(match):
-        return unichr(int(match.group(1), 16))
+        return chr(int(match.group(1), 16))
 
     ret = re.sub(r'\\:([0-9a-z]{4})', unicode_sub, ret)
 

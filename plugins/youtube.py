@@ -1,3 +1,6 @@
+from __future__ import unicode_literals
+
+from builtins import str
 import re
 import time
 
@@ -7,13 +10,13 @@ from util import hook, http
 youtube_re = (r'(?:youtube.*?(?:v=|/v/)|youtu\.be/|yooouuutuuube.*?id=)'
               '([-_a-z0-9]+)', re.I)
 
-base_url = 'https://www.googleapis.com/youtube/v3/'
-info_url = base_url + 'videos?part=snippet,contentDetails,statistics'
-search_api_url = base_url + 'search'
-video_url = 'http://youtube.com/watch?v=%s'
+BASE_URL = 'https://www.googleapis.com/youtube/v3/'
+INFO_URL = BASE_URL + 'videos?part=snippet,contentDetails,statistics&hl=en'
+SEARCH_API_URL = BASE_URL + 'search'
+VIDEO_URL = 'https://youtube.com/watch?v=%s'
 
 def get_video_description(vid_id, api_key):
-    j = http.get_json(info_url, id=vid_id, key=api_key)
+    j = http.get_json(INFO_URL, id=vid_id, key=api_key)
 
     if not j['pageInfo']['totalResults']:
         return
@@ -26,21 +29,18 @@ def get_video_description(vid_id, api_key):
                               "%Y-%m-%dT%H:%M:%S.000Z")
     published = time.strftime("%Y.%m.%d", published)
 
+    views = group_int_digits(j['statistics']['viewCount'], ',')
+    likes = j['statistics'].get('likeCount', 0)
+    dislikes = j['statistics'].get('dislikeCount', 0)
+    title = j['snippet']['title']
+    if 'localized' in j['snippet']:
+        title = j['snippet']['localized'].get('title') or title
 
-    if 'statistics' in j:
-        views = group_int_digits(j['statistics']['viewCount'], ',')
-        likes = j['statistics'].get('likeCount', 0)
-        dislikes = j['statistics'].get('dislikeCount', 0)
-    else:
-        views = 'No data for'
-        likes = 'No data for '
-        dislikes = ''
-
-    out = (u'\x02{snippet[title]}\x02 - length \x02{duration}\x02 - '
-           u'{likes}\u2191{dislikes}\u2193 - '
-           u'\x02{views}\x02 views - '
-           u'\x02{snippet[channelTitle]}\x02 on \x02{published}\x02'
-          ).format(duration=duration, likes=likes, dislikes=dislikes, views=views, published=published, **j)
+    out = ('\x02{title}\x02 - length \x02{duration}\x02 - '
+           '{likes}\u2191{dislikes}\u2193 - '
+           '\x02{views}\x02 views - '
+           '\x02{snippet[channelTitle]}\x02 on \x02{published}\x02'
+          ).format(duration=duration, likes=likes, dislikes=dislikes, views=views, published=published, title=title, **j)
 
     # TODO: figure out how to detect NSFW videos
 
@@ -72,13 +72,14 @@ def youtube(inp, api_key=None):
 
     params = {
         'key': api_key,
-        'fields': 'items(id,snippet(channelId,title))',
+        'fields': 'items(id(videoId))',
         'part': 'snippet',
         'type': 'video',
-        'q': inp
+        'maxResults': '1',
+        'q': inp,
     }
 
-    j = http.get_json(search_api_url, **params)
+    j = http.get_json(SEARCH_API_URL, **params)
 
     if 'error' in j:
         return 'error while performing the search'
@@ -90,4 +91,4 @@ def youtube(inp, api_key=None):
 
     vid_id = j['items'][0]['id']['videoId']
 
-    return get_video_description(vid_id, api_key) + " - " + video_url % vid_id
+    return get_video_description(vid_id, api_key) + " - " + VIDEO_URL % vid_id

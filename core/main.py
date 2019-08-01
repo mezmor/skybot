@@ -1,15 +1,22 @@
+from __future__ import print_function
+from builtins import str
+from builtins import range
+from builtins import object
 import re
-import thread
+import _thread
 import traceback
+from queue import Queue
+from future.builtins import str
 
-
-thread.stack_size(1024 * 512)  # reduce vm size
+_thread.stack_size(1024 * 512)  # reduce vm size
 
 
 class Input(dict):
 
     def __init__(self, conn, raw, prefix, command, params,
                  nick, user, host, paraml, msg):
+
+        server = conn.server_host
 
         chan = paraml[0].lower()
         if chan == conn.nick.lower():  # is a PM
@@ -48,7 +55,7 @@ class Input(dict):
 
         dict.__init__(self, conn=conn, raw=raw, prefix=prefix, command=command,
                       params=params, nick=nick, user=user, host=host,
-                      paraml=paraml, msg=msg, server=conn.server, chan=chan,
+                      paraml=paraml, msg=msg, server=server, chan=chan,
                       notice=notice, say=say, reply=reply, pm=pm, bot=bot,
                       kick=kick, ban=ban, unban=unban, me=me,
                       set_nick=set_nick, lastparam=paraml[-1])
@@ -80,14 +87,14 @@ def run(func, input):
     else:
         out = func(input.inp)
     if out is not None:
-        input.reply(unicode(out))
+        input.reply(str(out))
 
 
 def do_sieve(sieve, bot, input, func, type, args):
     try:
         return sieve(bot, input, func, type, args)
     except Exception:
-        print 'sieve error',
+        print('sieve error', end=' ')
         traceback.print_exc()
         return None
 
@@ -98,8 +105,8 @@ class Handler(object):
 
     def __init__(self, func):
         self.func = func
-        self.input_queue = Queue.Queue()
-        thread.start_new_thread(self.start, ())
+        self.input_queue = Queue()
+        _thread.start_new_thread(self.start, ())
 
     def start(self):
         uses_db = 'db' in self.func._args
@@ -140,24 +147,32 @@ def dispatch(input, kind, func, args, autohelp=False):
         input.reply(func.__doc__)
         return
 
-    if hasattr(func, '_apikey'):
-        key = bot.config.get('api_keys', {}).get(func._apikey, None)
-        if key is None:
-            input.reply('error: missing api key')
+    if hasattr(func, '_apikeys'):
+        bot_keys = bot.config.get('api_keys', {})
+        keys = {key: bot_keys.get(key) for key in func._apikeys}
+
+        missing = [keyname for keyname, value in keys.items() if value is None]
+        if missing:
+            input.reply('error: missing api keys - {}'.format(missing))
             return
-        input.api_key = key
+
+        # Return a single key as just the value, and multiple keys as a dict.
+        if len(keys) == 1:
+            input.api_key = list(keys.values())[0]
+        else:
+            input.api_key = keys
 
     if func._thread:
         bot.threads[func].put(input)
     else:
-        thread.start_new_thread(run, (func, input))
+        _thread.start_new_thread(run, (func, input))
 
 
 def match_command(command):
     commands = list(bot.commands)
 
     # do some fuzzy matching
-    prefix = filter(lambda x: x.startswith(command), commands)
+    prefix = [x for x in commands if x.startswith(command)]
     if len(prefix) == 1:
         return prefix[0]
     elif prefix and command not in prefix:
@@ -179,7 +194,7 @@ def test_make_command_re():
     match = make_command_re('.', False, 'bot').match
     assert not match('foo')
     assert not match('bot foo')
-    for _ in xrange(2):
+    for _ in range(2):
         assert match('.test').groups() == ('test', '')
         assert match('bot: foo args').groups() == ('foo', 'args')
         match = make_command_re('.', True, 'bot').match

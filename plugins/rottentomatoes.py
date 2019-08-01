@@ -1,37 +1,72 @@
+from __future__ import unicode_literals
+
+import json
+import re
+
 from util import http, hook
 
-api_root = 'http://api.rottentomatoes.com/api/public/v1.0/'
-movie_search_url = api_root + 'movies.json'
-movie_reviews_url = api_root + 'movies/%s/reviews.json'
+
+MOVIE_SEARCH_URL = 'https://www.rottentomatoes.com/api/private/v2.0/search/'
+MOVIE_PAGE_URL = 'https://www.rottentomatoes.com/m/%s'
 
 
-@hook.api_key('rottentomatoes')
+def get_rottentomatoes_data(movie_id):
+    if movie_id.startswith('/m/'):
+        movie_id = movie_id[3:]
+
+    document = http.get_html(MOVIE_PAGE_URL % movie_id)
+
+    # JSON for the page is stored in the script with ID 'jsonLdSchema'
+    # So we can pull that for tons of information.
+    ld_schema_element = document.xpath("//script[@type='application/ld+json']")[0]
+    ld_schema = json.loads(ld_schema_element.text_content())
+
+    scripts = '\n'.join(document.xpath('//script/text()'))
+    score_info = json.loads(re.search(r'scoreInfo = (.*);', scripts).group(1))['tomatometerAllCritics']
+
+
+    try:
+        audience_score = document.xpath('//span[contains(@class, "audience") and contains(@class, "rating")]/text()')[0].strip()
+    except IndexError:
+        audience_score = ''
+
+    return {
+        'title': ld_schema['name'],
+        'critics_score': score_info['score'],
+        'audience_score': audience_score,
+        'fresh': score_info['freshCount'],
+        'rotten': score_info['rottenCount'],
+        'url': MOVIE_PAGE_URL % movie_id
+    }
+
+
+def search_rottentomatoes(inp):
+    results = http.get_json(
+        MOVIE_SEARCH_URL,
+        limit=1,
+        q=inp
+    )
+
+    if not results or not results['movieCount']:
+        return None
+
+    return results['movies'][0]['url']
+
+
 @hook.command('rt')
 @hook.command
-def rottentomatoes(inp, api_key=None):
+def rottentomatoes(inp):
     '.rt <title> -- gets ratings for <title> from Rotten Tomatoes'
 
-    results = http.get_json(movie_search_url, q=inp, apikey=api_key)
-    if results['total'] == 0:
+    movie_id = search_rottentomatoes(inp)
+
+    if not movie_id:
         return 'no results'
 
-    movie = results['movies'][0]
-    title = movie['title']
-    id = movie['id']
-    critics_score = movie['ratings']['critics_score']
-    audience_score = movie['ratings']['audience_score']
-    url = movie['links']['alternate']
+    movie = get_rottentomatoes_data(movie_id)
 
-    if critics_score == -1:
-        return
-
-    reviews = http.get_json(movie_reviews_url %
-                            id, apikey=api_key, review_type='all')
-    review_count = reviews['total']
-
-    fresh = critics_score * review_count / 100
-    rotten = review_count - fresh
-
-    return u"%s - critics: \x02%d%%\x02 (%d\u2191%d\u2193)" \
-        " audience: \x02%d%%\x02 - %s" % (title, critics_score,
-                                          fresh, rotten, audience_score, url)
+    return (
+        "{title} - critics: \x02{critics_score}%\x02 "
+        "({fresh}\u2191{rotten}\u2193) "
+        "audience: \x02{audience_score}\x02 - {url}"
+    ).format(**movie)

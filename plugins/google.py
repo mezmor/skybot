@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import random
 
 from util import hook, http
@@ -5,7 +7,8 @@ from util import hook, http
 
 def api_get(query, key, is_image=None, num=1):
     url = ('https://www.googleapis.com/customsearch/v1?cx=007629729846476161907:ud5nlxktgcw'
-           '&fields=items(title,link,snippet)&safe=off' + ('&searchType=image' if is_image else ''))
+           '&fields=items(title,link,snippet)&safe=off&nfpr=1' +
+           ('&searchType=image' if is_image else ''))
     return http.get_json(url, key=key, q=query, num=num)
 
 
@@ -30,7 +33,7 @@ def google(inp, api_key=None):
     if 'items' not in parsed:
         return 'no results found'
 
-    out = u'{link} -- \x02{title}\x02: "{snippet}"'.format(**parsed['items'][0])
+    out = '{link} -- \x02{title}\x02: "{snippet}"'.format(**parsed['items'][0])
     out = ' '.join(out.split())
 
     if len(out) > 300:

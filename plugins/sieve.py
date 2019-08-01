@@ -1,3 +1,4 @@
+from builtins import map
 import re
 
 from util import hook
@@ -24,15 +25,15 @@ def sieve_suite(bot, input, func, kind, args):
         return None
 
     acls = bot.config.get('acls', {})
-    for acl in [acls.get(func.__name__), acls.get(input.chan), acls.get(input.conn.server)]:
+    for acl in [acls.get(func.__name__), acls.get(input.chan), acls.get(input.server)]:
         if acl is None:
             continue
         if 'deny-except' in acl:
-            allowed_channels = map(unicode.lower, acl['deny-except'])
+            allowed_channels = list(map(str.lower, acl['deny-except']))
             if input.chan.lower() not in allowed_channels:
                 return None
         if 'allow-except' in acl:
-            denied_channels = map(unicode.lower, acl['allow-except'])
+            denied_channels = list(map(str.lower, acl['allow-except']))
             if input.chan.lower() in denied_channels:
                 return None
         if 'whitelist' in acl:
@@ -45,7 +46,7 @@ def sieve_suite(bot, input, func, kind, args):
             if input.nick.lower() in acl['blacklist-nicks']:
                 return None
 
-    admins = input.conn.conf.get('admins', [])
+    admins = input.conn.admins
     input.admin = input.host in admins or input.nick in admins
 
     if args.get('adminonly', False):
