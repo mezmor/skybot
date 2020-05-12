@@ -31,33 +31,39 @@ class PaginatingWinnower(object):
 
     def __init__(self):
         self.lock = threading.Lock()
-        self.last_input = []
-        self.recent = set()
+        self.inputs = {}
 
     def winnow(self, inputs, limit=400, ordered=False):
         "remove random elements from the list until it's short enough"
         with self.lock:
+            combiner = lambda l: ', '.join(sorted(l))
+
             # try to remove elements that were *not* removed recently
-            inputs_sorted = sorted(inputs)
-            if inputs_sorted == self.last_input:
+            inputs_sorted = combiner(inputs)
+            if inputs_sorted in self.inputs:
                 same_input = True
+                recent = self.inputs[inputs_sorted]
+                if len(recent) == len(inputs):
+                    recent.clear()
             else:
                 same_input = False
-                self.last_input = inputs_sorted
-                self.recent.clear()
+                if len(self.inputs) >= 100:
+                    # a true lru is effort, random replacement is easy
+                    self.inputs.pop(random.choice(list(self.inputs)))
+                recent = set()
+                self.inputs[inputs_sorted] = recent
 
-            combiner = lambda l: ', '.join(l)
             suffix = ''
 
             while len(combiner(inputs)) >= limit:
-                if same_input and any(inp in self.recent for inp in inputs):
+                if same_input and any(inp in recent for inp in inputs):
                     if ordered:
-                        for inp in self.recent:
+                        for inp in recent:
                             if inp in inputs:
                                 inputs.remove(inp)
                     else:
                         inputs.remove(
-                            random.choice([inp for inp in inputs if inp in self.recent]))
+                            random.choice([inp for inp in inputs if inp in recent]))
                 else:
                     if ordered:
                         inputs.pop()
@@ -65,7 +71,7 @@ class PaginatingWinnower(object):
                         inputs.pop(random.randint(0, len(inputs) - 1))
                 suffix = ' ...'
 
-            self.recent.update(inputs)
+            recent.update(inputs)
             return combiner(inputs) + suffix
 
 winnow = PaginatingWinnower().winnow
@@ -107,11 +113,14 @@ def get_tag_counts_by_chan(db, chan):
         return 'no tags in %s' % chan
     return winnow(['%s (%d)' % row for row in tags], ordered=True)
 
-
 def get_tags_by_nick(db, chan, nick):
-    tags = db.execute("select subject from tag where lower(nick)=lower(?)"
+    return db.execute("select subject from tag where lower(nick)=lower(?)"
                       " and chan=?"
                       " order by lower(subject)", (nick, chan)).fetchall()
+
+def get_tags_string_by_nick(db, chan, nick):
+    tags = get_tags_by_nick(db, chan, nick)
+
     if tags:
         return 'tags for "%s": ' % munge(nick, 1) + winnow([
             tag[0] for tag in tags])
@@ -158,7 +167,7 @@ def tag(inp, chan='', db=None):
             return 'tag syntax has changed. try ".untag %s" instead' % subject
         return add_tag(db, chan, sanitize(nick), sanitize(subject))
     else:
-        tags = get_tags_by_nick(db, chan, inp)
+        tags = get_tags_string_by_nick(db, chan, inp)
         if tags:
             return tags
         else:
@@ -180,11 +189,31 @@ def untag(inp, chan='', db=None):
 
 @hook.command
 def tags(inp, chan='', db=None):
-    '.tags <nick>/list -- get list of tags for <nick>, or a list of tags {related: .tag, .untag, .tagged, .is}'
+    '.tags <nick>/<nick1> <nick2>/list -- get list of tags for <nick>, or a list of tags {related: .tag, .untag, .tagged, .is}'
     if inp == 'list':
         return get_tag_counts_by_chan(db, chan)
+    elif ' ' in inp:
+        tag_intersect = None
+        nicks = [nick.strip() for nick in inp.split(' ')]
+        munged_nicks = [munge(x, 1) for x in nicks]
+        for nick in nicks:
+            curr_tags = get_tags_by_nick(db, chan, nick)
 
-    tags = get_tags_by_nick(db, chan, inp)
+            if not curr_tags:
+                return 'nick "%s" not found' % nick
+
+            if tag_intersect is None:
+                tag_intersect = set(curr_tags)
+            else:
+                tag_intersect.intersection_update(curr_tags)
+
+        msg = 'shared tags for nicks "%s"' % winnow(munged_nicks)
+        if not tag_intersect:
+            return f'no {msg}'
+        else:
+            return f'{msg}: ' + winnow([tag[0] for tag in tag_intersect], 400 - len(msg))
+
+    tags = get_tags_string_by_nick(db, chan, inp)
     if tags:
         return tags
     else:
