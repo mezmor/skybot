@@ -1,7 +1,7 @@
 from util import hook, timesince
 import time
 import re
-import thread
+import _thread
 import sqlite3
 import os
 
@@ -82,7 +82,7 @@ def reminder_thread(nick, chan, reminder, wait_time, creation_time, conn, bot):
     conn.msg(chan, nick + ': ' + 'You set a reminder ' + str(creation_time_output) + ' ago: ' + reminder)
 
     # Cheat real bad and just reimplement core/db.get_db_connection
-    filename = os.path.join(bot.persist_dir, '%s.%s.db' % (conn.nick, conn.server))
+    filename = os.path.join(bot.persist_dir, '%s.%s.db' % (conn.nick, conn.server_host))
     db = sqlite3.connect(filename, timeout=10)
     db.execute('delete from reminders where nick=? and chan=? and creation_time=?',
                (nick, chan, creation_time))
@@ -125,7 +125,7 @@ def update_reminders(paraml, input=None, db=None, bot=None):
         if active_thread:
             # Any active threads with negative wait_time are stale: clean up
             if wait_time < 0:
-                thread.start_new_thread(reminder_thread,
+                _thread.start_new_thread(reminder_thread,
                                         (nick, chan, reminder_text, wait_time, creation_time, input.conn, bot))
                 db.execute('delete from reminders where nick=? and chan=? and creation_time=?',
                            (nick, chan, creation_time))
@@ -133,7 +133,7 @@ def update_reminders(paraml, input=None, db=None, bot=None):
             # If any reminders without active threads are below the threading_threshold: spawn a thread
             # This handles wait_time < 0, i.e. a thread wasn't spawned and the reminder expired
             if wait_time < threading_threshold:
-                thread.start_new_thread(reminder_thread,
+                _thread.start_new_thread(reminder_thread,
                                         (nick, chan, reminder_text, wait_time, creation_time, input.conn, bot))
                 db.execute('update reminders set active_thread = 1 where '
                            'nick=? and chan=? and creation_time=?',
@@ -191,7 +191,7 @@ def remindme(inp, nick='', chan='', db=None, conn=None, bot=None):
 
     if wait_time < threading_threshold:
         insert_reminder(db, nick, chan, reminder, expire_time, creation_time, True)
-        thread.start_new_thread(reminder_thread, (nick, chan, reminder, wait_time, creation_time, conn, bot))
+        _thread.start_new_thread(reminder_thread, (nick, chan, reminder, wait_time, creation_time, conn, bot))
     else:
         insert_reminder(db, nick, chan, reminder, expire_time, creation_time, False)
 
